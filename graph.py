@@ -4,50 +4,55 @@ from pathlib import Path
 
 
 def find_markdown_links(content):
-    # Find [[wiki-style]] and [markdown-style](links)
-    wiki_links = re.findall(r'\[\[(.*?)\]\]', content)
-    markdown_links = re.findall(r'\[([^\]]+)\]\(([^)]+)\)', content)
-    return wiki_links + [link[0] for link in markdown_links]
+    # Improved regex for Obsidian-style links
+    wiki_links = re.findall(r'\[\[(.*?)(?:\|.*?)?\]\]', content)
+    return wiki_links
 
 
 def generate_mermaid():
     vault_path = '.'
+    connections = []
     nodes = set()
-    connections = set()
 
+    # First pass: collect all files
     for file in Path(vault_path).rglob('*.md'):
-        if '.obsidian' in str(file):
+        if '.obsidian' in str(file) or 'graph.md' in str(file):
             continue
 
-        filename = str(file.stem)
-        nodes.add(filename)
+        current_file = file.stem
+        nodes.add(current_file)
 
         with open(file, 'r', encoding='utf-8') as f:
             content = f.read()
             links = find_markdown_links(content)
+
             for link in links:
-                connections.add((filename, link.split('|')[0].strip()))
+                link = link.split('|')[0].strip()
+                connections.append((current_file, link))
+                nodes.add(link)
 
     # Generate Mermaid diagram
-    mermaid = ["graph TD"]
-    for node in nodes:
-        node_id = f"node_{len(mermaid)}"
-        mermaid.append(f'    {node_id}["{node}"]')
+    mermaid = ["```mermaid", "graph TD"]
 
+    # Add nodes with cleaned names
+    node_map = {}
+    for i, node in enumerate(nodes):
+        clean_id = f"id{i}"
+        node_map[node] = clean_id
+        mermaid.append(f'    {clean_id}["{node}"]')
+
+    # Add connections
     for source, target in connections:
-        source_id = f"node_{list(nodes).index(source) + 1}"
-        target_id = f"node_{list(nodes).index(target) + 1}"
-        mermaid.append(f"    {source_id} --> {target_id}")
+        if source in node_map and target in node_map:
+            mermaid.append(f"    {node_map[source]} --> {node_map[target]}")
 
+    mermaid.append("```")
     return "\n".join(mermaid)
 
 
 def update_graph_file():
-    mermaid_content = generate_mermaid()
-    with open('graph.md', 'w') as f:
-        f.write("```mermaid\n")
-        f.write(mermaid_content)
-        f.write("\n```")
+    with open('graph.md', 'w', encoding='utf-8') as f:
+        f.write(generate_mermaid())
 
 
 if __name__ == "__main__":
